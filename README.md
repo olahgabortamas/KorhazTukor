@@ -34,10 +34,10 @@ $env:KORHAZTUKOR_CONTACT = "https://github.com/<user>/<repo>"
 ## GitHub-beállítás
 
 1. Hozz létre egy **public** repositoryt, és pushold a projektet a `main` branchre.
-2. A repository **Settings → Actions → General → Workflow permissions** részén válaszd a **Read and write permissions** lehetőséget.
+2. Hagyd a repository alapértelmezett workflow-jogosultságát **Read repository contents and packages** értéken. A gyűjtő saját fájlja kizárólag magának kér `contents: write` jogot az adatcommithoz.
 3. Az **Actions** fülön engedélyezd a workflow-kat, ha a GitHub ezt kéri.
 4. Indítsd el egyszer kézzel: **Actions → Collect NEAK waiting-list snapshot → Run workflow**.
-5. Ellenőrizd, hogy létrejött-e az aznapi fájl a `data/` alatt.
+5. Ellenőrizd, hogy a futás sikeres-e. Ha aznapi snapshot már létezik, a validáció lefut, de nem készül új commit.
 
 Ne állíts be repository secretet. A workflow a beépített, rövid életű `GITHUB_TOKEN` jogosultságát használja a saját adatcommitjához.
 
