@@ -1,0 +1,10 @@
+[project]
+name = "korhaztukor-collector"
+version = "0.1.0"
+description = "Daily archival collector for public aggregate Hungarian hospital waiting-list data"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"

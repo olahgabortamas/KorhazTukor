@@ -1,0 +1,51 @@
+name: Collect NEAK waiting-list snapshot
+
+on:
+  schedule:
+    # 02:17 UTC = 03:17 CET / 04:17 CEST. The non-round minute reduces queue delay.
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: neak-daily-collection
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KORHAZTUKOR_CONTACT: https://github.com/${{ github.repository }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run collector tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Collect and validate snapshot
+        run: python -m collector.collect --data-dir data
+
+      - name: Commit snapshot when data changed
+        shell: bash
+        run: |
+          if [[ -z "$(git status --porcelain -- data)" ]]; then
+            echo "No new snapshot to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data
+          git commit -m "data: collect NEAK snapshot $(date -u +%F)"
+          git push
