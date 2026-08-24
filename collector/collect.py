@@ -89,16 +89,22 @@ def main(argv: list[str] | None = None) -> int:
         "http_status": 200,
         "parser_version": __version__,
     }
-    snapshot_path, metadata_path = write_snapshot(
+    snapshot_path, metadata_path, created = write_snapshot(
         data_dir=args.data_dir,
         captured_at=captured_at,
         rows=rows,
         metadata=metadata,
     )
-    print(
-        f"Collected {len(rows)} rows for {captured_at:%Y-%m-%d}: "
-        f"{snapshot_path} ({metadata_path})"
-    )
+    if created:
+        print(
+            f"Collected {len(rows)} rows for {captured_at:%Y-%m-%d}: "
+            f"{snapshot_path} ({metadata_path})"
+        )
+    else:
+        print(
+            f"Snapshot already exists for {captured_at:%Y-%m-%d}; "
+            f"the current {len(rows)}-row source was valid, no files changed."
+        )
     return 0
 
 

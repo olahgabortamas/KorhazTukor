@@ -43,16 +43,11 @@ def write_snapshot(
     captured_at: datetime,
     rows: list[WaitingListRow],
     metadata: dict[str, object],
-) -> tuple[Path, Path]:
+) -> tuple[Path, Path, bool]:
     snapshot_path, metadata_path = snapshot_paths(data_dir, captured_at)
 
     if metadata_path.exists():
-        existing = json.loads(metadata_path.read_text(encoding="utf-8"))
-        if existing.get("source_sha256") == metadata.get("source_sha256"):
-            return snapshot_path, metadata_path
-        raise FileExistsError(
-            f"A different immutable snapshot already exists for {captured_at:%Y-%m-%d}"
-        )
+        return snapshot_path, metadata_path, False
 
     buffer = io.StringIO(newline="")
     fieldnames = ["captured_date"] + [field.name for field in fields(WaitingListRow)]
@@ -76,4 +71,4 @@ def write_snapshot(
             "utf-8"
         ),
     )
-    return snapshot_path, metadata_path
+    return snapshot_path, metadata_path, True
