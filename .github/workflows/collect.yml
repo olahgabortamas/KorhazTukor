@@ -37,15 +37,18 @@ jobs:
       - name: Collect and validate snapshot
         run: python -m collector.collect --data-dir data
 
+      - name: Export current website data
+        run: python -m collector.export_site_data --data-dir data --output site/public/data/korhaztukor.json
+
       - name: Commit snapshot when data changed
         shell: bash
         run: |
-          if [[ -z "$(git status --porcelain -- data)" ]]; then
+          if [[ -z "$(git status --porcelain -- data site/public/data)" ]]; then
             echo "No new snapshot to commit."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data
+          git add data site/public/data
           git commit -m "data: collect NEAK snapshot $(date -u +%F)"
           git push
