@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { hospitalLocations } from '../data/hospital-locations';
+import { NearbyMap } from './nearby-map';
 
 type HistoryPoint = {
   date: string;
@@ -104,6 +105,7 @@ export function DataExplorer() {
   const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
   const [locationStatus, setLocationStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [radius, setRadius] = useState(100);
+  const [nearbyView, setNearbyView] = useState<'list' | 'map'>('list');
 
   useEffect(() => {
     const initialQuery = new URLSearchParams(window.location.search).get('q') ?? '';
@@ -147,7 +149,7 @@ export function DataExplorer() {
       .map((row) => {
         const location = hospitalLocations[row.hospital_code];
         if (!location) return null;
-        return { ...row, locality: location.locality, distance: distanceInKm(userLocation, location) };
+        return { ...row, locality: location.locality, lat: location.lat, lon: location.lon, distance: distanceInKm(userLocation, location) };
       })
       .filter((row): row is NonNullable<typeof row> => row !== null && row.distance <= radius)
       .sort((first, second) => first.distance - second.distance);
@@ -326,18 +328,27 @@ export function DataExplorer() {
 
                 {userLocation ? (
                   <div className="nearby-results">
-                    <div className="nearby-result-header"><span>Kiindulópont: <strong>{userLocation.label}</strong></span><span>{nearbyOptions.length} lehetőség {radius} km-en belül</span></div>
+                    <div className="nearby-result-header">
+                      <span>Kiindulópont: <strong>{userLocation.label}</strong></span>
+                      <div className="nearby-view-toggle" role="tablist" aria-label="Közeli lehetőségek nézete">
+                        <button type="button" className={nearbyView === 'list' ? 'active' : ''} onClick={() => setNearbyView('list')} role="tab" aria-selected={nearbyView === 'list'}>Lista</button>
+                        <button type="button" className={nearbyView === 'map' ? 'active' : ''} onClick={() => setNearbyView('map')} role="tab" aria-selected={nearbyView === 'map'}>Térkép</button>
+                      </div>
+                      <span>{nearbyOptions.length} lehetőség {radius} km-en belül</span>
+                    </div>
                     {nearbyOptions.length ? (
-                      <ol className="nearby-list">
-                        {nearbyOptions.map((option) => (
-                          <li key={option.source_list_id}>
-                            <span className="nearby-distance">{Math.round(option.distance)}<small>km</small></span>
-                            <div><a href={option.source_url} target="_blank" rel="noreferrer">{option.hospital_name}</a><p>{option.locality} · {option.region}</p></div>
-                            <div className="nearby-metric"><span>Medián</span><strong>{option.median_wait_days} nap</strong></div>
-                            <div className="nearby-metric"><span>60+ nap</span><strong>{number.format(option.waiting_over_60)}</strong></div>
-                          </li>
-                        ))}
-                      </ol>
+                      nearbyView === 'map'
+                        ? <NearbyMap origin={userLocation} options={nearbyOptions} />
+                        : <ol className="nearby-list">
+                            {nearbyOptions.map((option) => (
+                              <li key={option.source_list_id}>
+                                <span className="nearby-distance">{Math.round(option.distance)}<small>km</small></span>
+                                <div><a href={option.source_url} target="_blank" rel="noreferrer">{option.hospital_name}</a><p>{option.locality} · {option.region}</p></div>
+                                <div className="nearby-metric"><span>Medián</span><strong>{option.median_wait_days} nap</strong></div>
+                                <div className="nearby-metric"><span>60+ nap</span><strong>{number.format(option.waiting_over_60)}</strong></div>
+                              </li>
+                            ))}
+                          </ol>
                     ) : <p className="nearby-empty">Ebben a körzetben nincs geokódolt, jelentő intézmény ennél a beavatkozásnál. Próbálj nagyobb körzetet.</p>}
                   </div>
                 ) : <p className="nearby-hint">Adj meg egy helyet, és megmutatjuk az ennél a beavatkozásnál jelentő intézményeket légvonalbeli távolság szerint.</p>}
