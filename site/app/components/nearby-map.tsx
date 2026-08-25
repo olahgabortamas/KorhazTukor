@@ -1,14 +1,18 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 type MapOption = {
   source_list_id: string;
   hospital_name: string;
   locality: string;
   distance: number;
+  travel_distance_km?: number;
+  travel_duration_minutes?: number;
   median_wait_days: number;
   waiting_over_60: number;
+  treated_previous_6_months: number;
+  quality_flags: string[];
   lat: number;
   lon: number;
 };
@@ -53,18 +57,46 @@ function loadLeaflet() {
   });
 }
 
-function tooltip(document: Document, name: string, locality: string, distance: number, median: number) {
+const number = new Intl.NumberFormat('hu-HU');
+
+function markerColour(option: MapOption) {
+  if (option.quality_flags.length) return '#78658b';
+  if (option.median_wait_days <= 60) return '#159b68';
+  if (option.median_wait_days <= 120) return '#dd9718';
+  return '#cf584c';
+}
+
+function tooltip(document: Document, option: MapOption) {
   const content = document.createElement('div');
   const title = document.createElement('strong');
-  title.textContent = name;
+  title.textContent = option.hospital_name;
   const detail = document.createElement('span');
-  detail.textContent = `${locality} · ${Math.round(distance)} km · medián ${median} nap`;
-  content.append(title, detail);
+  detail.textContent = `${option.locality} · ${option.travel_duration_minutes ? `${Math.round(option.travel_duration_minutes)} perc autóval` : `${Math.round(option.distance)} km légvonalban`}`;
+  const median = document.createElement('span');
+  median.textContent = `Medián: ${option.median_wait_days} nap · 60+ napja vár: ${number.format(option.waiting_over_60).replace(/\s/g, ' ')}`;
+  const treated = document.createElement('span');
+  treated.textContent = `Ellátott / 6 hó: ${number.format(option.treated_previous_6_months).replace(/\s/g, ' ')}`;
+  if (option.quality_flags.length) {
+    const caution = document.createElement('em');
+    caution.textContent = 'Értelmezd óvatosan: az adatsor minőségi jelzést kapott.';
+    content.append(title, detail, median, treated, caution);
+  } else {
+    content.append(title, detail, median, treated);
+  }
   return content;
 }
 
 export function NearbyMap({ origin, options }: NearbyMapProps) {
   const mapElement = useRef<HTMLDivElement>(null);
+  const [dark, setDark] = useState(false);
+
+  useEffect(() => {
+    const updateTheme = () => setDark(document.documentElement.dataset.theme === 'dark');
+    updateTheme();
+    const observer = new MutationObserver(updateTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     let map: any;
@@ -72,9 +104,11 @@ export function NearbyMap({ origin, options }: NearbyMapProps) {
     void loadLeaflet().then((L) => {
       if (cancelled || !mapElement.current || !L) return;
       map = L.map(mapElement.current, { scrollWheelZoom: false, zoomControl: true });
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      L.tileLayer(dark
+        ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+        : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
         maxZoom: 18,
-        attribution: '&copy; OpenStreetMap contributors',
+        attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
       }).addTo(map);
 
       const points: Array<[number, number]> = [[origin.lat, origin.lon]];
@@ -92,9 +126,9 @@ export function NearbyMap({ origin, options }: NearbyMapProps) {
           radius: 8,
           color: '#0d302b',
           weight: 2,
-          fillColor: '#62d2bd',
+          fillColor: markerColour(option),
           fillOpacity: 1,
-        }).addTo(map).bindTooltip(tooltip(document, option.hospital_name, option.locality, option.distance, option.median_wait_days), { direction: 'top' });
+        }).addTo(map).bindTooltip(tooltip(document, option), { direction: 'top' });
       });
       map.fitBounds(points, { padding: [36, 36], maxZoom: options.length === 1 ? 10 : 12 });
     }).catch(() => undefined);
@@ -103,7 +137,7 @@ export function NearbyMap({ origin, options }: NearbyMapProps) {
       cancelled = true;
       if (map) map.remove();
     };
-  }, [options, origin]);
+  }, [dark, options, origin]);
 
   return <div className="nearby-map" ref={mapElement} aria-label="Közeli intézmények térképe" />;
 }

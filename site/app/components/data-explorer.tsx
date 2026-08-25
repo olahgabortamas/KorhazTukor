@@ -72,7 +72,8 @@ type UserLocation = {
 };
 
 const REMOTE_DATA = 'https://raw.githubusercontent.com/olahgabortamas/KorhazTukor/main/site/public/data/korhaztukor.json';
-const number = new Intl.NumberFormat('hu-HU');
+const formatter = new Intl.NumberFormat('hu-HU');
+const number = { format: (value: number) => formatter.format(value).replace(/\s/g, ' ') };
 const date = new Intl.DateTimeFormat('hu-HU', { year: 'numeric', month: 'long', day: 'numeric' });
 
 const flagLabels: Record<string, string> = {
@@ -106,6 +107,9 @@ export function DataExplorer() {
   const [locationStatus, setLocationStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [radius, setRadius] = useState(100);
   const [nearbyView, setNearbyView] = useState<'list' | 'map'>('list');
+  const [travelMode, setTravelMode] = useState<'distance' | '60' | '120' | '180'>('distance');
+  const [drivingStatus, setDrivingStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [drivingMetrics, setDrivingMetrics] = useState<Record<string, { duration: number; distance: number }>>({});
 
   useEffect(() => {
     const initialQuery = new URLSearchParams(window.location.search).get('q') ?? '';
@@ -143,7 +147,7 @@ export function DataExplorer() {
     ?? filteredProcedures[0]
     ?? data?.procedures[0];
 
-  const nearbyOptions = useMemo(() => {
+  const optionsWithCoordinates = useMemo(() => {
     if (!active || !userLocation) return [];
     return active.rows
       .map((row) => {
@@ -151,9 +155,51 @@ export function DataExplorer() {
         if (!location) return null;
         return { ...row, locality: location.locality, lat: location.lat, lon: location.lon, distance: distanceInKm(userLocation, location) };
       })
-      .filter((row): row is NonNullable<typeof row> => row !== null && row.distance <= radius)
-      .sort((first, second) => first.distance - second.distance);
-  }, [active, radius, userLocation]);
+      .filter((row): row is NonNullable<typeof row> => row !== null);
+  }, [active, userLocation]);
+
+  useEffect(() => {
+    if (!userLocation || travelMode === 'distance' || !optionsWithCoordinates.length) return;
+    let cancelled = false;
+    const coordinates = [userLocation, ...optionsWithCoordinates]
+      .map((point) => `${point.lon},${point.lat}`)
+      .join(';');
+    setDrivingStatus('loading');
+    void fetch(`https://router.project-osrm.org/table/v1/driving/${coordinates}?sources=0&annotations=duration,distance`)
+      .then((response) => {
+        if (!response.ok) throw new Error('Routing failed');
+        return response.json() as Promise<{ durations: Array<Array<number | null>>; distances: Array<Array<number | null>> }>;
+      })
+      .then((result) => {
+        if (cancelled) return;
+        const next: Record<string, { duration: number; distance: number }> = {};
+        optionsWithCoordinates.forEach((option, index) => {
+          const duration = result.durations[0]?.[index + 1];
+          const distance = result.distances[0]?.[index + 1];
+          if (duration !== null && duration !== undefined && distance !== null && distance !== undefined) {
+            next[option.source_list_id] = { duration: duration / 60, distance: distance / 1000 };
+          }
+        });
+        setDrivingMetrics(next);
+        setDrivingStatus('idle');
+      })
+      .catch(() => { if (!cancelled) setDrivingStatus('error'); });
+    return () => { cancelled = true; };
+  }, [optionsWithCoordinates, travelMode, userLocation]);
+
+  const nearbyOptions = useMemo(() => {
+    if (travelMode === 'distance') {
+      return optionsWithCoordinates
+        .filter((option) => option.distance <= radius)
+        .sort((first, second) => first.distance - second.distance);
+    }
+    const timeLimit = Number(travelMode);
+    return optionsWithCoordinates
+      .map((option) => ({ ...option, route: drivingMetrics[option.source_list_id] }))
+      .filter((option) => option.route && option.route.duration <= timeLimit)
+      .sort((first, second) => first.route!.duration - second.route!.duration)
+      .map(({ route, ...option }) => ({ ...option, travel_duration_minutes: route!.duration, travel_distance_km: route!.distance }));
+  }, [drivingMetrics, optionsWithCoordinates, radius, travelMode]);
 
   async function searchLocation() {
     const queryToFind = locationQuery.trim();
@@ -314,14 +360,22 @@ export function DataExplorer() {
                   <button type="button" className="location-button" onClick={useBrowserLocation} disabled={locationStatus === 'loading'}>
                     ⌖ Jelenlegi helyzet
                   </button>
-                  <label className="radius-select">Körzet
+                  <label className="radius-select">Szűrés
+                    <select value={travelMode} onChange={(event) => setTravelMode(event.target.value as 'distance' | '60' | '120' | '180')}>
+                      <option value="distance">Légvonal</option>
+                      <option value="60">Autóval 1 óra</option>
+                      <option value="120">Autóval 2 óra</option>
+                      <option value="180">Autóval 3 óra</option>
+                    </select>
+                  </label>
+                  {travelMode === 'distance' && <label className="radius-select">Körzet
                     <select value={radius} onChange={(event) => setRadius(Number(event.target.value))}>
                       <option value={25}>25 km</option>
                       <option value={50}>50 km</option>
                       <option value={100}>100 km</option>
                       <option value={200}>200 km</option>
                     </select>
-                  </label>
+                  </label>}
                 </div>
 
                 {locationStatus === 'error' && <p className="location-error">A helyet most nem találtuk. Próbálj meg várost vagy irányítószámot megadni.</p>}
@@ -334,25 +388,26 @@ export function DataExplorer() {
                         <button type="button" className={nearbyView === 'list' ? 'active' : ''} onClick={() => setNearbyView('list')} role="tab" aria-selected={nearbyView === 'list'}>Lista</button>
                         <button type="button" className={nearbyView === 'map' ? 'active' : ''} onClick={() => setNearbyView('map')} role="tab" aria-selected={nearbyView === 'map'}>Térkép</button>
                       </div>
-                      <span>{nearbyOptions.length} lehetőség {radius} km-en belül</span>
+                      <span>{drivingStatus === 'loading' ? 'Útvonalak számítása…' : `${nearbyOptions.length} lehetőség ${travelMode === 'distance' ? `${radius} km-en belül` : `${Number(travelMode) / 60} óra autóúton belül`}`}</span>
                     </div>
-                    {nearbyOptions.length ? (
+                    {drivingStatus === 'loading' ? <p className="nearby-empty">Útvonalak számítása az intézményekhez…</p> : nearbyOptions.length ? (
                       nearbyView === 'map'
                         ? <NearbyMap origin={userLocation} options={nearbyOptions} />
                         : <ol className="nearby-list">
                             {nearbyOptions.map((option) => (
                               <li key={option.source_list_id}>
-                                <span className="nearby-distance">{Math.round(option.distance)}<small>km</small></span>
+                                <span className="nearby-distance">{option.travel_duration_minutes ? Math.round(option.travel_duration_minutes) : Math.round(option.distance)}<small>{option.travel_duration_minutes ? 'perc' : 'km'}</small></span>
                                 <div><a href={option.source_url} target="_blank" rel="noreferrer">{option.hospital_name}</a><p>{option.locality} · {option.region}</p></div>
                                 <div className="nearby-metric"><span>Medián</span><strong>{option.median_wait_days} nap</strong></div>
                                 <div className="nearby-metric"><span>60+ nap</span><strong>{number.format(option.waiting_over_60)}</strong></div>
                               </li>
                             ))}
                           </ol>
-                    ) : <p className="nearby-empty">Ebben a körzetben nincs geokódolt, jelentő intézmény ennél a beavatkozásnál. Próbálj nagyobb körzetet.</p>}
+                    ) : <p className="nearby-empty">{drivingStatus === 'error' ? 'Az autóút-számítás most nem érhető el. Válts légvonal szerinti nézetre, vagy próbáld újra később.' : 'Ebben a körzetben nincs geokódolt, jelentő intézmény ennél a beavatkozásnál. Próbálj nagyobb körzetet.'}</p>}
                   </div>
                 ) : <p className="nearby-hint">Adj meg egy helyet, és megmutatjuk az ennél a beavatkozásnál jelentő intézményeket légvonalbeli távolság szerint.</p>}
-                <p className="nearby-note">A távolság intézményi központok közötti légvonal. A tényleges ellátási lehetőséget az orvosi beutalás, a területi ellátási kötelezettség és az intézmény határozza meg.</p>
+                <div className="map-legend" aria-label="Térkép jelmagyarázata"><span className="short-wait">Rövidebb megfigyelt medián: legfeljebb 60 nap</span><span className="mid-wait">61–120 nap</span><span className="long-wait">120 nap felett</span><span className="uncertain-wait">Értelmezd óvatosan</span></div>
+                <p className="nearby-note">A marker színe a megelőző 6 hónapban ellátott esetek megfigyelt medián várakozási idejét jelzi; a minőségi jelzést kapott adatsorok külön színt kapnak. Az autóút becslés, a légvonal intézményi központok közötti távolság. A tényleges ellátási lehetőséget az orvosi beutalás, a területi ellátási kötelezettség és az intézmény határozza meg.</p>
               </section>
 
               <div className="table-wrap">
