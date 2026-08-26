@@ -72,8 +72,7 @@ type UserLocation = {
 };
 
 const REMOTE_DATA = 'https://raw.githubusercontent.com/olahgabortamas/KorhazTukor/main/site/public/data/korhaztukor.json';
-const formatter = new Intl.NumberFormat('hu-HU');
-const number = { format: (value: number) => formatter.format(value).replace(/\s/g, ' ') };
+const number = { format: (value: number) => Math.round(value).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') };
 const date = new Intl.DateTimeFormat('hu-HU', { year: 'numeric', month: 'long', day: 'numeric' });
 
 const flagLabels: Record<string, string> = {
@@ -357,8 +356,8 @@ export function DataExplorer() {
                       {locationStatus === 'loading' ? 'Keresés…' : 'Keresés'}
                     </button>
                   </label>
-                  <button type="button" className="location-button" onClick={useBrowserLocation} disabled={locationStatus === 'loading'}>
-                    ⌖ Jelenlegi helyzet
+                  <button type="button" className="location-button" onClick={useBrowserLocation} disabled={locationStatus === 'loading'} aria-label="Saját helyzetem használata">
+                    ⌖ Saját helyzetem
                   </button>
                   <label className="radius-select">Szűrés
                     <select value={travelMode} onChange={(event) => setTravelMode(event.target.value as 'distance' | '60' | '120' | '180')}>

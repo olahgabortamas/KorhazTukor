@@ -291,6 +291,12 @@ tbody tr:hover { background: color-mix(in srgb, var(--accent-soft) 32%, transpar
   .footer-grid > p { text-align: left; }
   .footer-grid > div:last-child { justify-content: flex-start; }
 }
+@media (max-width: 720px) {
+  .location-controls { grid-template-columns: minmax(0, 1fr) auto; }
+  .location-input { grid-column: 1 / -1; }
+  .location-button, .radius-select { min-width: 0; }
+  .location-button { white-space: nowrap; }
+}
 @media (max-width: 560px) {
   .site-header, .hero, .section-shell { width: min(100% - 28px, 1180px); }
   .site-header { height: 72px; }

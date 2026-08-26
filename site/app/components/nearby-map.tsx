@@ -57,7 +57,7 @@ function loadLeaflet() {
   });
 }
 
-const number = new Intl.NumberFormat('hu-HU');
+const number = { format: (value: number) => Math.round(value).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') };
 
 function markerColour(option: MapOption) {
   if (option.quality_flags.length) return '#78658b';
@@ -73,9 +73,9 @@ function tooltip(document: Document, option: MapOption) {
   const detail = document.createElement('span');
   detail.textContent = `${option.locality} · ${option.travel_duration_minutes ? `${Math.round(option.travel_duration_minutes)} perc autóval` : `${Math.round(option.distance)} km légvonalban`}`;
   const median = document.createElement('span');
-  median.textContent = `Medián: ${option.median_wait_days} nap · 60+ napja vár: ${number.format(option.waiting_over_60).replace(/\s/g, ' ')}`;
+  median.textContent = `Medián: ${option.median_wait_days} nap · 60+ napja vár: ${number.format(option.waiting_over_60)}`;
   const treated = document.createElement('span');
-  treated.textContent = `Ellátott / 6 hó: ${number.format(option.treated_previous_6_months).replace(/\s/g, ' ')}`;
+  treated.textContent = `Ellátott / 6 hó: ${number.format(option.treated_previous_6_months)}`;
   if (option.quality_flags.length) {
     const caution = document.createElement('em');
     caution.textContent = 'Értelmezd óvatosan: az adatsor minőségi jelzést kapott.';
