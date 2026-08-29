@@ -15,6 +15,7 @@ type MapOption = {
   quality_flags: string[];
   lat: number;
   lon: number;
+  history: Array<{ date: string; waiting_over_60: number }>;
 };
 
 type NearbyMapProps = {
@@ -76,12 +77,19 @@ function tooltip(document: Document, option: MapOption) {
   median.textContent = `Medián: ${option.median_wait_days} nap · 60+ napja vár: ${number.format(option.waiting_over_60)}`;
   const treated = document.createElement('span');
   treated.textContent = `Ellátott / 6 hó: ${number.format(option.treated_previous_6_months)}`;
+  const trend = document.createElement('span');
+  const first = option.history[0]?.waiting_over_60;
+  const latest = option.history[option.history.length - 1]?.waiting_over_60;
+  const change = first === undefined || latest === undefined ? null : latest - first;
+  trend.textContent = option.history.length < 3 || change === null
+    ? 'Trend: még nincs elég adat'
+    : `Változás: ${change > 0 ? '+' : change < 0 ? '−' : '±'} ${number.format(Math.abs(change))} a gyűjtés kezdete óta`;
   if (option.quality_flags.length) {
     const caution = document.createElement('em');
     caution.textContent = 'Értelmezd óvatosan: az adatsor minőségi jelzést kapott.';
-    content.append(title, detail, median, treated, caution);
+    content.append(title, detail, median, treated, trend, caution);
   } else {
-    content.append(title, detail, median, treated);
+    content.append(title, detail, median, treated, trend);
   }
   return content;
 }

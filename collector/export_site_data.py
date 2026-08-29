@@ -47,10 +47,26 @@ def build_site_data(data_dir: Path) -> dict[str, Any]:
     current = snapshots[current_date]
 
     procedure_history: dict[str, list[dict[str, int | str]]] = defaultdict(list)
+    row_history: dict[str, list[dict[str, int | str]]] = defaultdict(list)
     for date in dates:
         by_procedure: dict[str, list[dict[str, str]]] = defaultdict(list)
         for row in snapshots[date]:
             by_procedure[row["procedure_code"]].append(row)
+            row_history[row["source_list_id"]].append(
+                {
+                    "date": date,
+                    "waiting_over_60": int(row["waiting_over_60"]),
+                    "treated_previous_6_months": int(
+                        row["treated_previous_6_months"]
+                    ),
+                    "median_wait_days": int(
+                        row["median_wait_days_previous_6_months"]
+                    ),
+                    "mean_wait_days": int(
+                        row["mean_wait_days_previous_6_months"]
+                    ),
+                }
+            )
         for code, rows in by_procedure.items():
             procedure_history[code].append(
                 {
@@ -83,6 +99,7 @@ def build_site_data(data_dir: Path) -> dict[str, Any]:
                     "mean_wait_days": int(row["mean_wait_days_previous_6_months"]),
                     "quality_flags": _flags(row),
                     "source_url": row["source_row_url"],
+                    "history": row_history[row["source_list_id"]],
                 }
             )
         procedures.append(

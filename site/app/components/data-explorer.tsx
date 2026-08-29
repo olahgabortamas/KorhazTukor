@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { hospitalLocations } from '../data/hospital-locations';
 import { NearbyMap } from './nearby-map';
+import { TrendChart } from './trend-chart';
 
 type HistoryPoint = {
   date: string;
@@ -23,6 +24,13 @@ type ProcedureRow = {
   mean_wait_days: number;
   quality_flags: string[];
   source_url: string;
+  history: Array<{
+    date: string;
+    waiting_over_60: number;
+    treated_previous_6_months: number;
+    median_wait_days: number;
+    mean_wait_days: number;
+  }>;
 };
 
 type Procedure = {
@@ -94,6 +102,30 @@ function distanceInKm(from: UserLocation, to: { lat: number; lon: number }) {
     + Math.cos(radians(from.lat)) * Math.cos(radians(to.lat)) * Math.sin(longitudeDifference / 2) ** 2;
   return earthRadiusKm * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
 }
+
+type TrendStatus = 'improving' | 'stable' | 'worsening' | 'insufficient';
+
+function calculateTrend(points: Array<{ waiting_over_60: number }>) {
+  if (points.length < 3) return { status: 'insufficient' as TrendStatus, change: 0, percent: 0 };
+  const first = points[0].waiting_over_60;
+  const last = points[points.length - 1].waiting_over_60;
+  const change = last - first;
+  const percent = first ? change / first * 100 : 0;
+  const status: TrendStatus = percent <= -2 ? 'improving' : percent >= 2 ? 'worsening' : 'stable';
+  return { status, change, percent };
+}
+
+function signed(value: number) {
+  if (value === 0) return '± 0';
+  return `${value > 0 ? '+' : '−'} ${number.format(Math.abs(value))}`;
+}
+
+const trendCopy: Record<TrendStatus, { eyebrow: string; headline: string }> = {
+  improving: { eyebrow: 'Javuló rövid távú jelzés', headline: 'Kevesebben várnak 60 napnál régebben' },
+  stable: { eyebrow: 'Lényegében változatlan', headline: 'Érdemi elmozdulás még nem látszik' },
+  worsening: { eyebrow: 'Romló rövid távú jelzés', headline: 'Többen várnak 60 napnál régebben' },
+  insufficient: { eyebrow: 'Még nincs elég adat', headline: 'Gyűjtjük az első összehasonlítható napokat' },
+};
 
 export function DataExplorer() {
   const [data, setData] = useState<SiteData | null>(null);
@@ -250,7 +282,9 @@ export function DataExplorer() {
     );
   }
 
-  const maxTrend = Math.max(...(active?.history.map((item) => item.waiting_over_60) ?? [1]), 1);
+  const activeTrend = calculateTrend(active?.history ?? []);
+  const activeTrendCopy = trendCopy[activeTrend.status];
+  const reportingListsChanged = Boolean(active?.history.length && active.history[0].reporting_lists !== active.history[active.history.length - 1].reporting_lists);
 
   return (
     <section className="data-explorer" id="varolistak">
@@ -321,18 +355,26 @@ export function DataExplorer() {
                 <div><span>Értelmezési jelzés</span><strong>{active.flagged_list_count}</strong></div>
               </div>
 
-              <div className="trend-panel">
-                <div>
-                  <span className="panel-label">60+ napja várakozók története</span>
-                  <strong>{number.format(active.waiting_over_60)}</strong>
-                  <p>{active.history.length === 1 ? 'Ez az első adatpont. A vonal a következő napi gyűjtésekkel indul el.' : `${active.history.length} napi adatpont.`}</p>
+              <section className={`trend-panel ${activeTrend.status}`} aria-labelledby="trend-heading">
+                <div className="trend-summary">
+                  <span className="panel-label">A legfontosabb kérdés</span>
+                  <h3 id="trend-heading">Javul vagy romlik a helyzet?</h3>
+                  <span className="trend-status"><i aria-hidden="true" />{activeTrendCopy.eyebrow}</span>
+                  <p className="trend-headline">{activeTrendCopy.headline}</p>
+                  <div className="trend-stat-grid">
+                    <div><span>Most</span><strong>{number.format(active.waiting_over_60)}</strong><small>60+ napja vár</small></div>
+                    <div><span>Változás</span><strong>{signed(activeTrend.change)}</strong><small>{activeTrend.status === 'insufficient' ? 'még nem számolható' : `${Math.abs(activeTrend.percent).toLocaleString('hu-HU', { maximumFractionDigits: 1 })}% a gyűjtés kezdete óta`}</small></div>
+                  </div>
                 </div>
-                <div className={`mini-trend ${active.history.length === 1 ? 'single' : ''}`} aria-label={`${active.history.length} történeti adatpont`}>
-                  {active.history.map((point) => (
-                    <i key={point.date} style={{ height: `${Math.max(14, point.waiting_over_60 / maxTrend * 100)}%` }} title={`${point.date}: ${point.waiting_over_60}`} />
-                  ))}
+                <div className="trend-visual">
+                  <div className="trend-visual-header"><span>60+ napja várakozók</span><strong>{active.history.length} napi adatpont</strong></div>
+                  <TrendChart points={active.history} status={activeTrend.status} />
                 </div>
-              </div>
+                <p className="trend-method-note">
+                  <strong>Előzetes rövid távú jelzés.</strong> Az első és a legutóbbi gyűjtési nap közötti változást mutatjuk; ±2%-on belül változatlannak tekintjük. Ez nem előrejelzés és nem a személyes várakozási időd.
+                  {reportingListsChanged && <span> A jelentő listák száma közben változott, ezért az elmozdulás egy része adatösszetételi hatás lehet.</span>}
+                </p>
+              </section>
 
               <section className="nearby-panel" aria-labelledby="nearby-heading">
                 <div className="nearby-intro">
@@ -393,14 +435,15 @@ export function DataExplorer() {
                       nearbyView === 'map'
                         ? <NearbyMap origin={userLocation} options={nearbyOptions} />
                         : <ol className="nearby-list">
-                            {nearbyOptions.map((option) => (
-                              <li key={option.source_list_id}>
+                            {nearbyOptions.map((option) => {
+                              const optionTrend = calculateTrend(option.history);
+                              return <li key={option.source_list_id}>
                                 <span className="nearby-distance">{option.travel_duration_minutes ? Math.round(option.travel_duration_minutes) : Math.round(option.distance)}<small>{option.travel_duration_minutes ? 'perc' : 'km'}</small></span>
-                                <div><a href={option.source_url} target="_blank" rel="noreferrer">{option.hospital_name}</a><p>{option.locality} · {option.region}</p></div>
+                                <div><a href={option.source_url} target="_blank" rel="noreferrer">{option.hospital_name}</a><p>{option.locality} · {option.region} <span className={`nearby-inline-trend ${optionTrend.status}`}>{optionTrend.status === 'insufficient' ? 'új adatsor' : `${signed(optionTrend.change)} változás`}</span></p></div>
                                 <div className="nearby-metric"><span>Medián</span><strong>{option.median_wait_days} nap</strong></div>
                                 <div className="nearby-metric"><span>60+ nap</span><strong>{number.format(option.waiting_over_60)}</strong></div>
-                              </li>
-                            ))}
+                              </li>;
+                            })}
                           </ol>
                     ) : <p className="nearby-empty">{drivingStatus === 'error' ? 'Az autóút-számítás most nem érhető el. Válts légvonal szerinti nézetre, vagy próbáld újra később.' : 'Ebben a körzetben nincs geokódolt, jelentő intézmény ennél a beavatkozásnál. Próbálj nagyobb körzetet.'}</p>}
                   </div>
@@ -411,18 +454,20 @@ export function DataExplorer() {
 
               <div className="table-wrap">
                 <table>
-                  <thead><tr><th>Intézmény</th><th>60+ nap</th><th>Medián</th><th>Átlag</th><th>Ellátott / 6 hó</th><th>Jelzés</th></tr></thead>
+                  <thead><tr><th>Intézmény</th><th>60+ nap</th><th>Változás</th><th>Medián</th><th>Átlag</th><th>Ellátott / 6 hó</th><th>Jelzés</th></tr></thead>
                   <tbody>
-                    {active.rows.map((row) => (
-                      <tr key={row.source_list_id}>
+                    {active.rows.map((row) => {
+                      const rowTrend = calculateTrend(row.history);
+                      return <tr key={row.source_list_id}>
                         <td><a href={row.source_url} target="_blank" rel="noreferrer">{row.hospital_name}<small>{row.region}</small></a></td>
                         <td>{number.format(row.waiting_over_60)}</td>
+                        <td><span className={`trend-chip ${rowTrend.status}`} title="Változás a gyűjtés első napjához képest">{rowTrend.status === 'insufficient' ? 'nincs elég adat' : signed(rowTrend.change)}</span></td>
                         <td>{row.median_wait_days} nap</td>
                         <td>{row.mean_wait_days} nap</td>
                         <td>{number.format(row.treated_previous_6_months)}</td>
                         <td>{row.quality_flags.length ? <span className="quality-pill" title={row.quality_flags.map((flag) => flagLabels[flag]).join(', ')}>Értelmezd óvatosan</span> : <span className="no-flag">—</span>}</td>
-                      </tr>
-                    ))}
+                      </tr>;
+                    })}
                   </tbody>
                 </table>
               </div>

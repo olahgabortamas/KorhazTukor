@@ -35,4 +35,8 @@ class ExportSiteDataTests(unittest.TestCase):
         self.assertEqual(result["summary"]["waiting_over_60"], 30)
         self.assertEqual(result["procedures"][0]["name"], "Térdprotézis műtét")
         self.assertEqual(result["procedures"][0]["flagged_list_count"], 1)
+        self.assertEqual(
+            result["procedures"][0]["rows"][0]["history"][0]["waiting_over_60"],
+            20,
+        )
         self.assertEqual(len(result["hospitals"]), 2)
