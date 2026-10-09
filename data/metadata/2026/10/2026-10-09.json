@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "captured_at_utc": "2026-10-09T09:01:08.079096Z",
+  "source_requested_url": "https://varolista.neak.gov.hu/varolista_pub/varolistak-teteles-lekerdezese/?tk=MIND",
+  "source_final_url": "https://varolista.neak.gov.hu/varolista_pub/varolistak-teteles-lekerdezese/?tk=MIND",
+  "source_sha256": "635f93a7878c2c3744d52d97c3ab7744889004af32245030b71cf585e45e1c9a",
+  "source_bytes": 48393,
+  "http_status": 200,
+  "parser_version": "0.1.0",
+  "row_count": 120,
+  "quality_flag_counts": {
+    "HIGH_MEAN_MEDIAN_GAP": 33,
+    "LOW_SAMPLE": 7,
+    "STRONGLY_SKEWED": 10
+  }
+}
